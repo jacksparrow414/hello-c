@@ -1,0 +1,24 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    // 所有属性：https://code.visualstudio.com/docs/editor/debugging#_launchjson-attributes
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "C/C++: clang++ build and debug active file",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${fileDirname}/${fileBasenameNoExtension}",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        // 使用外部终端
+        "externalConsole": true,
+        "MIMode": "lldb",
+        // 和tasks.json中的label对应
+        "preLaunchTask": "C/C++: clang++ build active file"
+      }
+    ]
+  }
