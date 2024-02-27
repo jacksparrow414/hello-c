@@ -7,6 +7,9 @@
 // 可参考的链接： https://stackoverflow.com/questions/26026302/trying-to-have-multiple-source-files-linked-with-one-header-in-c
 //               https://blog.csdn.net/fhb1922702569/article/details/114276707
 // TODO 关于这方面需要再调查
+
+/* 使用typedef的好处是创建Book时可以直接写Book book, 如果没有typedef的话，则需要使用struct Book
+https://www.cnblogs.com/zjuhaohaoxuexi/p/16252576.html */
 typedef struct 
 {
     char name[10];
@@ -14,3 +17,5 @@ typedef struct
 } Book;
 
 void print_book(Book);
+
+void creat_book_and_print();
