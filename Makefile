@@ -1,6 +1,7 @@
-# Windows下把/缓存\
+# Windows下把/换成\
+# Windows下使用ming32-make
 
-objects = helloWorld.o struct_learn/book.o
+objects = helloWorld.o struct_learn/book.o input_output_learn/read_user_input.o
 hello : $(objects)
 	cc -o hello $(objects)
 helloWorld.o : struct_learn/book.h

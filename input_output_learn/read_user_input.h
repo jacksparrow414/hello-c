@@ -1,0 +1,1 @@
+void read_a_string_with_unknowd_length();
