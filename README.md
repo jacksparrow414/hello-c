@@ -23,3 +23,6 @@ gcc struct_learn/book.c helloWorld.c -o helloWorld.exe
 
 # how to write makefile?
 [how-to-write-makefile](https://seisman.github.io/how-to-write-makefile/overview.html)
+
+# recommended books
+- The C Programming Language(Second Edition)

@@ -8,28 +8,6 @@
 // https://stackoverflow.com/questions/16182115/note-previous-implicit-declaration-of-point-forward-was-here
 
 
-void struct_learn_example() {
-    // create a structure variable
-    Book book;
-    printf("please enter book name\n");
-    // 通过指针进行赋值
-    
-    // 指针
-    scanf("%s", &book.name);
-    printf("please enter book id\n");
-    // 指针
-    scanf("%d", &book.book_id);
-    printf("display book info\n");
-    print_book(book);
-    // 本应该是14个字节，内存对齐最终是16字节
-    printf("book object size is: %d\n", sizeof(book));
-}
-
-void read_user_input_example() {
-    read_a_string_with_unknowd_length();
-}
-
-
 int main()
 {
     int mode;
@@ -38,15 +16,20 @@ int main()
     printf("1: strut learn demo\n");
     printf("2: read user input demo\n");
     scanf("%d", &mode);
+    /* 当scanf读取数字时, 需要跟一个getchar(), 读取并丢弃输入缓冲区中的换行符
+    这是因为在使用 scanf 读取整数时，输入缓冲区中的换行符可能会被留下，而后续使用 fgetc 读取字符时会受到影响。
+    因此，为了确保从输入缓冲区中获取正确的字符，我们需要先读取并丢弃换行符
+    https://stackoverflow.com/questions/69689147/how-does-scanf-and-getchar-work-together */
+    getchar();
     switch (mode) {
         case 0:
             printf("exit");
             break;
         case 1:
-            struct_learn_example();
+            creat_book_and_print();
             break;
         case 2:
-            read_user_input_example();
+            read_a_string_with_unknowd_length();
             break;
         default:
             printf("invalid mode %d", mode);

@@ -17,3 +17,5 @@ typedef struct
 } Book;
 
 void print_book(Book);
+
+void creat_book_and_print();
