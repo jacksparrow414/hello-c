@@ -25,7 +25,9 @@ void read_a_string_with_unknowd_length() {
     char类型对应的字符等于此字符在机器编码表上对应的数字,并且unassigned char的范围是0-255,太小,所以使用int接收
     '\n'的ASCII是10, 1.5.3 行计数 > 最后两段话
 
-    在程序开始执行时, 默认的三个流stdin,stdout,stderr已经处于打开状态, 见见C程序设计语言 > 附录B B.1输入于输出 章节 */
+    在程序开始执行时, 默认的三个流stdin,stdout,stderr已经处于打开状态, 见见C程序设计语言 > 附录B B.1输入于输出 章节 
+    https://sourceware.org/glibc/manual/latest/html_node/Standard-Streams.html
+    */
     while ((ch=fgetc(stdin)) != EOF && ch != '\n')
     {
         str[str_len++] = ch;
@@ -51,21 +53,18 @@ void read_a_string_with_unknowd_length() {
             }
         }
     }
-    // str[str_len++]='\n';
     // 给字符串末尾加'\0'表示字符串结束, 这是C语言的约定, 见C程序设计语言 > 导言 1.9章节
     str[str_len++]='\0';
 
     // 使用下列两种方式输出字符数组
     // printf("The string you entered is: %s", str);
 
-    /* 使用这种方式需要flush,将缓冲区的内容输出
-    https://stackoverflow.com/questions/39536212/what-are-the-rules-of-automatic-stdout-buffer-flushing-in-c
-    因为terminal默认是line buffered, 我们这里的字符串又没有换行,某些情况(谁知道terminal的buffer什么时候满呢?)line buffer可能没填满导致不输出内容,所以需要手动flush. 
-    多运行几次就发现有的时候没fflush也可以,有的时候就不行 */
+    /* 因为terminal默认是line buffered */
     fputs("The string you entered is:", stdout);
     fputs(str, stdout);
-    // 或者把str[str_len++]='\n'注释放开并注释掉fflush
-    fflush(stdout);
+    // https://sourceware.org/glibc/manual/latest/html_node/Flushing-Buffers.html
+    // 文档里提到这么一种情况: When a newline is written, if the stream is line buffered,会自动flush,所以对于当前情况
+    // fflush(stdout);
     // 释放分配给str的内存空间
     free(str);
 }

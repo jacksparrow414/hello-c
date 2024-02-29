@@ -1,0 +1,1 @@
+void access_website_index_page_then_write_response_to_file(char *website_url);
