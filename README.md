@@ -21,6 +21,14 @@ example 2
 gcc struct_learn/book.c helloWorld.c -o helloWorld.exe
 ```
 
+example 3
+write a [makefile](#how-to-write-makefile?), then run
+```shell
+make
+```
+# C Standard Library Quick Reference
+- https://en.cppreference.com/w/c/header
+
 # how to write makefile?
 [how-to-write-makefile](https://seisman.github.io/how-to-write-makefile/overview.html)
 

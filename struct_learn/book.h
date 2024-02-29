@@ -8,14 +8,22 @@
 //               https://blog.csdn.net/fhb1922702569/article/details/114276707
 // TODO 关于这方面需要再调查
 
-/* 使用typedef的好处是创建Book时可以直接写Book book, 如果没有typedef的话，则需要使用struct Book
-https://www.cnblogs.com/zjuhaohaoxuexi/p/16252576.html */
+/* 
+使用typedef的好处是创建Book时可以直接写Book book, 如果没有typedef的话，则需要使用struct Book
+https://www.cnblogs.com/zjuhaohaoxuexi/p/16252576.html 
+
+还有的好处见: C程序设计语言 > 第6章 结构 > 6.7 类型定义(typedef)
+*/
 typedef struct 
 {
     char name[10];
     int book_id;
 } Book;
-
-void print_book(Book);
+/* 
+ C程序设计语言 > 第6章 结构 > 6.2 结构与函数
+ 1. 结构的合法操作只有几种：作为一个整体复制和赋值，通过&运算符取地址
+ 2. 3种可能的方法传递结构：一是分别传递各个结构成员，二是传递整个结构，三是传递指向结构的指针。三种方法各有利弊
+ */
+void print_book(Book *book);
 
 void creat_book_and_print();
