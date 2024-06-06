@@ -1,6 +1,3 @@
-[toc]
-# hello-c
-
 Learn C Language Project
 
 # what is the fundamental difference between source and header files in c? 
