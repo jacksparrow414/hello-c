@@ -1,3 +1,4 @@
+#include <stdbool.h>
 /*
  二叉树结构：包括数据域和指针域
 */
@@ -14,9 +15,13 @@ typedef struct binary_tree
     struct binary_tree *right_sub_tree;
 } Binarytree;
 
-Binarytree build_binary_tree(int num);
+Binarytree *create_new_binary_tree();
+
+Binarytree *build_simple_binary_tree(Binarytree *binary_tree, int data);
 
 bool check_node_exist(Binarytree *binarytree);
+
+void free_binary_tree(Binarytree *binary_tree);
 
 /*
 打印二叉树

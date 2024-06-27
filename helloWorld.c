@@ -1,7 +1,9 @@
 // 引用系统.h使用<>
 #include <stdio.h>
+#include <stdlib.h>
 // 引用自定义的.h使用""
 #include "struct_learn/book.h"
+#include "struct_learn/binary_tree.h"
 #include "input_output_learn/read_user_input.h"
 #include "file_socket_learn/file_example.h"
 #include "file_socket_learn/socket_client_example.h"
@@ -19,6 +21,7 @@ int main()
     printf("2: read user input demo\n");
     printf("3: file and socket demo\n");
     printf("4: read a binary file then copy\n");
+    printf("5: create a simple binary tree\n");
     scanf("%d", &mode);
     /* 当scanf读取数字时, 需要跟一个getchar(), 读取并丢弃输入缓冲区中的换行符
     这是因为在使用 scanf 读取整数时，输入缓冲区中的换行符可能会被留下，而后续使用 fgetc 读取字符时会受到影响。
@@ -40,6 +43,19 @@ int main()
             break;
         case 4:
             read_binary_file_write_it_back();
+            break;
+        case 5:
+            Binarytree *binary_tree = create_new_binary_tree();
+            while (true)
+            {
+                printf("please enter numbers: \n");
+                int data;
+                scanf("%d", &data);
+                
+                build_simple_binary_tree(binary_tree, data);
+                printf("add node successful\n");
+            }
+            free_binary_tree(binary_tree);
             break;
         default:
             printf("invalid mode %d", mode);
