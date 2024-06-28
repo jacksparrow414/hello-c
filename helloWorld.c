@@ -1,6 +1,5 @@
 // 引用系统.h使用<>
 #include <stdio.h>
-#include <stdlib.h>
 // 引用自定义的.h使用""
 #include "struct_learn/book.h"
 #include "struct_learn/binary_tree.h"
@@ -45,17 +44,7 @@ int main()
             read_binary_file_write_it_back();
             break;
         case 5:
-            Binarytree *binary_tree = create_new_binary_tree();
-            while (true)
-            {
-                printf("please enter numbers: \n");
-                int data;
-                scanf("%d", &data);
-                
-                build_simple_binary_tree(binary_tree, data);
-                printf("add node successful\n");
-            }
-            free_binary_tree(binary_tree);
+            create_binary_tree_from_user_input();
             break;
         default:
             printf("invalid mode %d", mode);

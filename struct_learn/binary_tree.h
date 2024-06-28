@@ -19,7 +19,7 @@ Binarytree *create_new_binary_tree();
 
 Binarytree *build_simple_binary_tree(Binarytree *binary_tree, int data);
 
-bool check_node_exist(Binarytree *binarytree);
+bool check_node_exist(Binarytree *binary_tree);
 
 void free_binary_tree(Binarytree *binary_tree);
 
@@ -29,4 +29,8 @@ mode: 0 前序遍历
       1 中序遍历
       2 后序遍历
 */
-void print_binary_tree(Binarytree *binarytree, int mode);
+void print_binary_tree(Binarytree *binary_tree, int mode);
+
+void create_binary_tree_from_user_input();
+
+int get_binary_tree_height(Binarytree *binary_tree);
