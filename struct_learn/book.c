@@ -18,7 +18,8 @@ void creat_book_and_print()
     printf("please enter book name\n");
     // 通过指针进行赋值
 
-    // 指针
+    // 指针声明后必须要赋【值】，这个值是内存地址
+    // 指针在第一次解引用（*p）之前，必须先指向一块有效内存，这个有效内存地址要么是指向已有变量，要么指向动态内存
     bp = &book;
     scanf("%s", bp->name);
     printf("please enter book id\n");

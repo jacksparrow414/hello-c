@@ -10,6 +10,7 @@
 #include <netdb.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #include "socket_server.h"
 #include "../utils/socket_utils.h"
@@ -28,6 +29,15 @@ void handle_request(int client_socket)
             break;
         }
     }
+}
+
+void *handle_request_for_threads(void *client_socket)
+{
+    int client_fd = *(int *)client_socket;
+    free(client_socket);
+    printf("thread is %lu\n", (unsigned long)pthread_self());
+    handle_request(client_fd);
+    return NULL;
 }
 
 int server_that_can_process_requests_concurrently()
@@ -90,6 +100,54 @@ int server_that_can_process_requests_concurrently()
                 }
             }
         }
+    }
+}
+/*
+    并发型服务器: 服务器可以同时处理多个客户端，使用线程实现
+*/
+int server_that_can_process_requests_concurrently_using_thread()
+{
+    int server_socket = bind_server_socket_to_port_and_listen();
+    while (1)
+    {
+        int new_client_socket = accept(server_socket, NULL, NULL);
+        if (new_client_socket < 0)
+        {
+            perror("accept");
+            exit(EXIT_FAILURE);
+        }
+        /*
+            必须把new_client_socket传递给子线程且以指针的形式，如果直接传&new_client_socket，
+            但是假设此时子线程还创建完还没拿到CPU的执行权，此时主线程又accept了另外一个客户端，此时子线程再拿这个new_client_socket对于的内存地址数据,拿的可能是第二个客户端的socket
+        */
+        pthread_t client_thread;
+        int *pclient = malloc(sizeof(int));
+        if (pclient == NULL)
+        {
+            perror("malloc");
+            exit(EXIT_FAILURE);
+        }
+        /*
+            这里还有一种不用malloc的方式，使用 (void *)(intptr_t)new_client_socket
+            Linux系统编程 29.3 创建线程
+            通过审慎的类型强制转换，arg甚至可以传递int类型的值
+            说的应该就是这种方式，在指针函数中使用
+            int client_fd = (int)(intptr_t)arg;
+            转回来
+        */
+        *pclient = new_client_socket;
+        int create_result = pthread_create(&client_thread, NULL, handle_request_for_threads, pclient);
+        if (create_result != 0)
+        {
+            perror("pthread_create");
+            exit(EXIT_FAILURE);
+        }
+        /*
+            Linux系统编程 29.7 线程分离
+            有时，程序员并不关心线程的返回状态，【只是希望系统在线程终止时能够自动清理并移除之】
+            在这种情况下，可以调用pthread_detach()并向thread参数传入指定线程的标识符，将该线程标记为处于分离（detached）状态
+        */
+        pthread_detach(client_thread);
     }
 }
 

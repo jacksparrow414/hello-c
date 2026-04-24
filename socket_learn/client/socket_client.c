@@ -6,6 +6,11 @@
 #include "../utils/socket_utils.h"
 
 #define CLIENT_MESSAGE "Hi, Server! This is Client."
+/*
+    还可以使用
+    echo "Hello, dhb test" | nc localhost 18080
+    直接在终端测试
+*/
 void say_hi_to_server()
 {
     int sockfd = bind_client_socket_to_port_and_connect();
