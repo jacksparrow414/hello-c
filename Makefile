@@ -2,10 +2,10 @@
 # Windows下使用mingw32-make
 
 objects = helloWorld.o struct_learn/book.o struct_learn/binary_tree.o input_output_learn/read_user_input.o file_socket_learn/file_example.o socket_learn/server/socket_server.o socket_learn/client/socket_client.o socket_learn/utils/socket_utils.o
-clearn : $(objects)
-	cc -o clearn $(objects)
+hello : $(objects)
+	cc -o hello $(objects)
 helloWorld.o : struct_learn/book.h struct_learn/binary_tree.h input_output_learn/read_user_input.h file_socket_learn/file_example.h socket_learn/server/socket_server.h socket_learn/client/socket_client.h socket_learn/utils/socket_utils.h
 .PHONY : clean
 clean :
 # Windows下把rm换成del https://stackoverflow.com/questions/47735464/make-clean-not-working
-	-rm clearn $(objects)
+	-rm hello $(objects)

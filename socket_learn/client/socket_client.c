@@ -5,9 +5,11 @@
 
 #include "../utils/socket_utils.h"
 
+#define CLIENT_MESSAGE "Hi, Server! This is Client."
 void say_hi_to_server()
 {
     int sockfd = bind_client_socket_to_port_and_connect();
-    char *message = "Hi, Server! This is Client.";
-    write(sockfd, message, strlen(message) + 1);
+    write(sockfd, CLIENT_MESSAGE, strlen(CLIENT_MESSAGE) + 1);
+    read_from_client(sockfd);
+    close(sockfd);
 }

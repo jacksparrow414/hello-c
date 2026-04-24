@@ -25,10 +25,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <arpa/inet.h>
+
 #include "socket_utils.h"
 
 #define SERVER_PORT 18080
-#define CLIENT_PORT 18081
+#define SERVER_IP "127.0.0.1"
 
 //  make a server socket or a client socket.
 int make_socket()
@@ -88,7 +90,7 @@ int bind_server_socket_to_port_and_listen()
     server_addr_info.sin_addr.s_addr = INADDR_ANY;
 
     /*
-        https: // sourceware.org/glibc/manual/latest/html_node/Setting-Address.html
+        https://sourceware.org/glibc/manual/latest/html_node/Setting-Address.html
         A socket newly created with the socket function has no address.
         Other processes can find it for communication only if you give it an address.
         We call this binding the address to the socket, and the way to do it is with the bind function
@@ -104,8 +106,7 @@ int bind_server_socket_to_port_and_listen()
 
         https://sourceware.org/glibc/manual/latest/html_node/Address-Formats.html
     */
-    socklen_t addr_len = sizeof(server_addr_info);
-    if (bind(sockfd, (struct sockaddr *)&server_addr_info, addr_len) < 0)
+    if (bind(sockfd, (struct sockaddr *)&server_addr_info, sizeof(server_addr_info)) < 0)
     {
         perror("bind");
         close(sockfd);
@@ -123,6 +124,39 @@ int bind_server_socket_to_port_and_listen()
         If connection requests arrive from clients faster than the server can act upon them,
         the queue can fill up and additional requests are refused with an ECONNREFUSED error.
          You can specify the maximum length of this queue as an argument to the listen function
+
+         这个等待队列是TCP3次握手之后的等待队列，如果TCP3次握手成功，队列还是满的，那么内核可能把该连接丢弃，反应在客户端就是连接建立成功，但是发送数据超时
+
+         下列流程图来自claude > https://claude.ai/chat/bad1e6b6-9f6a-4c40-8ef0-83b60018f5cb
+         客户端 SYN 到达
+            ↓
+        ┌─────────────────────┐
+        │  SYN 队列           │  ← 半连接队列 (incomplete)
+        │  (SYN_RCVD 状态)    │    收到 SYN → 发 SYN-ACK → 等 ACK
+        └─────────────────────┘
+            ↓  收到第三次握手的 ACK
+        ┌─────────────────────┐
+        │  Accept 队列         │  ← 全连接队列 (complete)
+        │  (ESTABLISHED 状态)  │    listen() 的 backlog 限制的是这个！
+        └─────────────────────┘
+            ↓
+            accept()
+
+        完整流程图
+
+        Client          Kernel (Server)         App
+        |                  |                   |
+        |──── SYN ────────→|                   |
+        |                  | 放入 SYN 队列      |
+        |←── SYN-ACK ──────|                   |
+        |                  |                   |
+        |──── ACK ────────→|                   |
+        |                  | Accept 队列满了？  |
+        |                  |    ├── 否 → 放入 Accept 队列 → 等待 accept()
+        |                  |    └── 是 → 丢弃 ACK (或发 RST)
+        |                  |                   |
+        |  （客户端以为连接建立了！）           |
+        |  （但服务端 accept 队列没有它）       |
     */
     if (listen(sockfd, SOMAXCONN) < 0)
     {
@@ -136,16 +170,46 @@ int bind_server_socket_to_port_and_listen()
 int bind_client_socket_to_port_and_connect()
 {
     int sockfd = make_socket();
-    struct sockaddr_in client_addr_info;
-    client_addr_info.sin_family = AF_INET;
-    client_addr_info.sin_port = htons(CLIENT_PORT);
-    client_addr_info.sin_addr.s_addr = INADDR_ANY;
-    socklen_t addr_len = sizeof(client_addr_info);
-    if (connect(sockfd, (struct sockaddr *)&client_addr_info, addr_len) < 0)
+    /*
+        这里要设置服务器的IP和服务器端口.
+        通常客户端socket的端口是OS随机分配的,如果想要使用指定端口，使用bind即可. bind函数的定义就是为socket绑定IP和端口.
+
+        inet_pton函数的作用是把点分十进制的IP地址转换成网络字节序的二进制IP地址.
+        见 Linux系统编程 59.6 > net_pton()和inet_ntop()函数
+        https://sourceware.org/glibc/manual/2.25/html_node/Host-Address-Functions.html#index-inet_005fnetof
+    */
+    struct sockaddr_in server_addr_info;
+    server_addr_info.sin_family = AF_INET;
+    server_addr_info.sin_port = htons(SERVER_PORT);
+    inet_pton(AF_INET, SERVER_IP, &server_addr_info.sin_addr);
+    /*
+        https://sourceware.org/glibc/manual/latest/html_node/Connecting.html
+    */
+    if (connect(sockfd, (struct sockaddr *)&server_addr_info, sizeof(server_addr_info)) < 0)
     {
         perror("connect");
         close(sockfd);
         exit(EXIT_FAILURE);
     }
     return sockfd;
+}
+
+// 代码来自于 https://sourceware.org/glibc/manual/latest/html_node/Server-Example.html
+int read_from_client(int client_socket)
+{
+    char buffer[BUFFER_SIZE];
+    int bytes_read = read(client_socket, buffer, BUFFER_SIZE);
+    if (bytes_read < 0)
+    {
+        perror("read");
+        exit(EXIT_FAILURE);
+    }
+    else if (bytes_read == 0)
+    {
+        return -1;
+    }
+    fprintf(stderr, "got message: '%s'\n", buffer);
+    // 打开注释观察FIN_WAIT_2 超时RST现象，看server_that_can_process_requests_concurrently_using_child_process注释
+    // sleep(60);
+    return 0;
 }

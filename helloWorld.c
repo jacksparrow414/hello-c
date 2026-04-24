@@ -6,6 +6,7 @@
 #include "input_output_learn/read_user_input.h"
 #include "file_socket_learn/file_example.h"
 #include "socket_learn/server/socket_server.h"
+#include "socket_learn/client/socket_client.h"
 // 将后续使用的函数声明放在前面，否则编译器会报异常
 // https://stackoverflow.com/questions/16182115/note-previous-implicit-declaration-of-point-forward-was-here
 
@@ -21,6 +22,8 @@ int main()
     printf("5: create a simple binary tree\n");
     printf("6: start a one therad socket server\n");
     printf("7: start a multi thread socket server\n");
+    printf("8: start a socket client\n");
+    printf("9: start a socket server that can process requests concurrently using child process\n");
     scanf("%d", &mode);
     /* 当scanf读取数字时, 需要跟一个getchar(), 读取并丢弃输入缓冲区中的换行符
     这是因为在使用 scanf 读取整数时，输入缓冲区中的换行符可能会被留下，而后续使用 fgetc 读取字符时会受到影响。
@@ -53,8 +56,14 @@ int main()
     case 7:
         server_that_can_process_requests_concurrently();
         break;
+    case 8:
+        say_hi_to_server();
+        break;
+    case 9:
+        server_that_can_process_requests_concurrently_using_child_process();
+        break;
     default:
-        printf("invalid mode %d", mode);
+        printf("invalid mode %d\n", mode);
         break;
     }
     return 0;
