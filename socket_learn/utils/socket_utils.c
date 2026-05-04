@@ -27,6 +27,10 @@
 
 #include <arpa/inet.h>
 
+#include <fcntl.h>
+#include <errno.h>
+#include <time.h>
+
 #include "socket_utils.h"
 
 #define SERVER_PORT 18080
@@ -51,6 +55,8 @@ int make_socket()
 
         For each combination of style and namespace there is a default protocol, which you can request by specifying 0 as the protocol number. And that’s what you should normally do—use the default
 
+        https://sourceware.org/glibc/manual/latest/html_node/Creating-a-Socket.html
+
         创建套接字见Linux系统编程 第56.2 创建Socket
     */
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -59,7 +65,52 @@ int make_socket()
         perror("socket");
         exit(EXIT_FAILURE);
     }
+    /*
+        socket默认是阻塞式的
+        Linux系统编程 5.9 非阻塞式I/O
+        因为无法通过 open()来获取管道和套接字的文件描述符，所以要启用非阻塞标志，就必须使用5.3节所述fcntl()的F_SETFL命令
+
+        https://snapshots.sourceware.org/glibc/trunk/2025-02-03_13-41_1738590061/manual/html_node/Operating-Modes.html
+        The bit that enables nonblocking mode for the file. If this bit is set, read requests on the file can return immediately with a failure status if there is no input immediately available, instead of blocking.
+        Likewise, write requests can also return immediately with a failure status if the output can’t be written immediately
+    */
+    int flags = fcntl(sockfd, F_GETFL);
+    if (flags == -1)
+    {
+        perror("fcntl");
+        exit(EXIT_FAILURE);
+    }
+    if (!(flags & O_NONBLOCK))
+    {
+        printf("socket is blocking I/O\n");
+    }
     return sockfd;
+}
+
+/*
+    Linux系统编程 5.3 打开文件的状态标志
+    为了修改打开文件的状态标志，可以使用fcntl()的F_GETFL命令来获取当前标志的副本，然后修改需要变更的比特位，
+    最后再次调用fcntl()函数的F_SETFL命令来更新此状态标志。因此，为了添加O_APPEND标志，可以编写如下代码
+
+    https://sourceware.org/glibc/manual/2.25/html_node/Getting-File-Status-Flags.html
+    The normal return value from fcntl with this command is an unspecified value other than -1, which indicates an error.
+*/
+int set_nonblocking(int sockfd)
+{
+    int flags = fcntl(sockfd, F_GETFL);
+    if (flags == -1)
+    {
+        perror("fcntl");
+        exit(EXIT_FAILURE);
+    }
+    flags |= O_NONBLOCK;
+    if (fcntl(sockfd, F_SETFL, flags) == -1)
+    {
+        perror("fcntl");
+        exit(EXIT_FAILURE);
+    }
+    printf("socket is nonblocking I/O now\n");
+    return 0;
 }
 
 int bind_server_socket_to_port_and_listen()
@@ -194,22 +245,61 @@ int bind_client_socket_to_port_and_connect()
     return sockfd;
 }
 
-// 代码来自于 https://sourceware.org/glibc/manual/latest/html_node/Server-Example.html
+/*
+    代码来自于 https://sourceware.org/glibc/manual/latest/html_node/Server-Example.html
+
+    关于read函数的说明
+    https://sourceware.org/glibc/manual/2.25/html_node/I_002fO-Primitives.html#index-read
+    In case of an error, read returns -1.
+    Compatibility Note: Most versions of BSD Unix use a different error code for this: EWOULDBLOCK.
+    In the GNU C Library, EWOULDBLOCK is an alias for EAGAIN, so it doesn’t matter which name you use
+
+    Linux系统编程 5.9 非阻塞I/O
+    若I/O系统调用未能立即完成，则可能会只传输部分数据，或者系统调用失败，并返回EAGAIN或EWOULDBLOCK错误
+
+    Linux系统编程 63.1 整体概览
+    如果在打开文件时设定了O_NONBLOCK标志，会以非阻塞方式打开文件。如果I/O系统调用不能立刻完成，则会返回错误而不是阻塞进程
+
+    Linux系统编程 3.4 处理来自系统调用和库函数的错误
+    系统调用失败时，会将全局整形变量 errno 设置为一个正值，以标识具体的错误。
+    程序应包含 <errno.h>头文件，该文件提供了对 errno 的声明，以及一组针对各种错误编号而定义的常量
+*/
 int read_from_client(int client_socket)
 {
     char buffer[BUFFER_SIZE];
     int bytes_read = read(client_socket, buffer, BUFFER_SIZE);
-    if (bytes_read < 0)
+
+    if (bytes_read == -1)
     {
-        perror("read");
-        exit(EXIT_FAILURE);
+        if (errno == EAGAIN)
+        {
+            return READ_AGAIN;
+        }
+        else
+        {
+            perror("read");
+            exit(EXIT_FAILURE);
+        }
     }
     else if (bytes_read == 0)
     {
         return -1;
     }
-    fprintf(stderr, "got message: '%s'\n", buffer);
+    fprintf(stdout, "got message: '%s'\n", buffer);
     // 打开注释观察FIN_WAIT_2 超时RST现象，看server_that_can_process_requests_concurrently_using_child_process注释
     // sleep(60);
+    return 0;
+}
+
+/*
+    https://sourceware.org/glibc/manual/2.25/html_node/Time-Functions-Example.html
+*/
+int print_time()
+{
+    time_t now = time(NULL);
+    struct tm *tm_now = localtime(&now);
+    char buf[64];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm_now);
+    printf("当前时间: %s\n", buf);
     return 0;
 }

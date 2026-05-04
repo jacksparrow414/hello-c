@@ -43,3 +43,5 @@ make
 # recommended documents
 
 - [GNU C](https://www.gnu.org/software/c-intro-and-ref/manual/html_node/index.html#SEC_Contents)
+- [CSAPP PowerPoint](https://www.cs.cmu.edu/afs/cs/academic/class/15213-f15/www/schedule.html)
+- [CSAPP 中文电子书](https://hansimov.gitbook.io/csapp)

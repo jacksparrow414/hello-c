@@ -28,7 +28,10 @@ TODO:
  1. struct初始化时如何正确内存分配malloc
     一个例子: https://github.com/antirez/smallchat/blob/main/smallchat-server.c
  2. 如何知道何时增加该struct的存储空间？
-
+ 3. 如果结构体只是在栈中使用，也就是函数内部使用，那么无需为其分配内存；
+    3.1 只有结构体需要跨函数使用，那么需要为结构体分配内存
+    3.2 同时其数量由运行时决定，那么需要为结构体分配内存，例如这里的n是未知的，struct sockaddr_in *arr = malloc(n * sizeof(struct sockaddr_in));
+    3.3 结构体特别大，放在栈上很危险。栈空间一般在8MB
  这个例子可以很好的说明malloc分配的内存在堆上，而不是栈上。
  即使函数结束返回了，结构体指针依旧可用
  */

@@ -25,6 +25,7 @@ int main()
     printf("8: start a socket client\n");
     printf("9: start a socket server that can process requests concurrently using child process\n");
     printf("10: start a socket server that can process requests concurrently using thread\n");
+    printf("11: start a socket server that can process requests concurrently using thread and non-blocking IO\n");
     scanf("%d", &mode);
     /* 当scanf读取数字时, 需要跟一个getchar(), 读取并丢弃输入缓冲区中的换行符
     这是因为在使用 scanf 读取整数时，输入缓冲区中的换行符可能会被留下，而后续使用 fgetc 读取字符时会受到影响。
@@ -55,7 +56,7 @@ int main()
         server_that_can_only_process_requests_iteratively();
         break;
     case 7:
-        server_that_can_process_requests_concurrently();
+        server_that_can_process_requests_concurrently_using_io_multiplexing_by_select();
         break;
     case 8:
         say_hi_to_server();
@@ -65,6 +66,9 @@ int main()
         break;
     case 10:
         server_that_can_process_requests_concurrently_using_thread();
+        break;
+    case 11:
+        server_that_can_process_requests_concurrently_using_thread_and_non_blocking_io();
         break;
     default:
         printf("invalid mode %d\n", mode);

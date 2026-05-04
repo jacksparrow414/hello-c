@@ -17,6 +17,12 @@
 
 #define MESSAGE "I have received your message"
 
+struct client_info
+{
+    int client_socket;
+    int using_non_blocking_io;
+};
+
 void handle_request(int client_socket)
 {
     while (1)
@@ -40,10 +46,55 @@ void *handle_request_for_threads(void *client_socket)
     return NULL;
 }
 
-int server_that_can_process_requests_concurrently()
+/*
+    Linux系统编程 63.1 整体概览
+    这种轮询通常是我们不希望看到的。如果轮询的频率不高，那么应用程序响应I/O事件的延时可能会达到无法接受的程度。
+    换句话说，在一个紧凑的循环中做轮询就是在浪费CPU
+*/
+void *handle_request_for_threads_using_non_block_io(void *arg)
+{
+    struct client_info *client = (struct client_info *)arg;
+    int client_fd = client->client_socket;
+    int using_non_blocking_io = client->using_non_blocking_io;
+    printf("i/o mode: %d\n", using_non_blocking_io);
+    free(client);
+    if (using_non_blocking_io)
+    {
+        while (1)
+        {
+            int result = read_from_client(client_fd);
+            if (result <= 0)
+            {
+                close(client_fd);
+                printf("close client socket\n");
+                break;
+            }
+            else if (result == READ_AGAIN)
+            {
+                print_time();
+                printf("no data now, please read again after 3 seconds\n");
+                // 为了充分利用CPU，休眠这段时间，实际上可以让线程去做点其他事情
+                // do something else
+                sleep(3);
+            }
+        }
+    }
+    else
+    {
+        printf("non-blocking io\n");
+    }
+    return NULL;
+}
+
+/*
+    https://sourceware.org/glibc/manual/2.25/html_node/Waiting-for-I_002fO.html
+    A better solution is to use the select function.
+    This blocks the program until input or output is ready on a specified set of file descriptors, or until a timer expires, whichever comes first
+*/
+int server_that_can_process_requests_concurrently_using_io_multiplexing_by_select()
 {
     int server_socket = bind_server_socket_to_port_and_listen();
-    //  https://sourceware.org/glibc/manual/2.25/html_node/Waiting-for-I_002fO.html
+    //
     // A better solution is to use the select function. This blocks the program until input or output is ready on a specified set of file descriptors,
     // or until a timer expires, whichever comes first
     fd_set active_fd_set, read_fd_set;
@@ -100,6 +151,46 @@ int server_that_can_process_requests_concurrently()
                 }
             }
         }
+    }
+}
+
+/*
+    测试: (sleep 15; echo "hello"; sleep 15) | nc 127.0.0.1 18080
+*/
+int server_that_can_process_requests_concurrently_using_thread_and_non_blocking_io()
+{
+    int server_socket = bind_server_socket_to_port_and_listen();
+    set_nonblocking(server_socket);
+    while (1)
+    {
+        int new_client_socket = accept(server_socket, NULL, NULL);
+        if (new_client_socket < 0)
+        {
+            if (errno == EAGAIN)
+            {
+                print_time();
+                printf("no connection now, please connect after 3 seconds\n");
+                sleep(3);
+                continue;
+            }
+            else
+            {
+                perror("accept");
+                exit(EXIT_FAILURE);
+            }
+        }
+        set_nonblocking(new_client_socket);
+        pthread_t client_thread;
+        struct client_info *client = malloc(sizeof(struct client_info));
+        client->client_socket = new_client_socket;
+        client->using_non_blocking_io = 1;
+        int create_result = pthread_create(&client_thread, NULL, handle_request_for_threads_using_non_block_io, (void *)client);
+        if (create_result != 0)
+        {
+            perror("pthread_create");
+            exit(EXIT_FAILURE);
+        }
+        pthread_detach(client_thread);
     }
 }
 /*
@@ -163,7 +254,10 @@ int server_that_can_process_requests_concurrently_using_thread()
     2. 【系统级】的打开文件表，open file description table/open file table, 主要列为【当前文件偏移量+打开文件时所使用的标志+文件访问模式+与信号驱动I/O相关的设置+i-node指针】，该指针指向第3项
         2.1 系统级打开文件表还有一个关键列为文件描述符的引用计数，【只有当引用计数为0时，内核才会进行真正【关闭】操作，释放资源等】，
         这个引用计数目前没找到书籍佐证，但是网上很多博客都提到了这个引用计数和内核关闭，【释放资源】相关
-        例如：https://chessman7.substack.com/p/fork-and-file-descriptors-the-unix 博客中提到
+        https://www.cs.cmu.edu/afs/cs/academic/class/15213-f15/www/lectures/16-io.pptx CSAPP 课程课件也提到了这个引用计数
+        Child’s table same as parent’s, and +1 to each refcnt
+
+        还有例如：https://chessman7.substack.com/p/fork-and-file-descriptors-the-unix 博客中提到
         Only when all file descriptors pointing to an open file description are closed does the kernel actually close the fil
 
     3. 【文件系统级】的i-node表，每个文件系统都会为驻留其上的所有文件建立一个i-node表
@@ -187,40 +281,40 @@ int server_that_can_process_requests_concurrently_using_thread()
 
     普通文件
     close() → 引用计数归零
-         │
-         ├── 1. 刷新页缓存（page cache）中的脏页写回磁盘
-         │        （如果有 O_SYNC 或调用了 fsync()，早已写回）
-         │
-         ├── 2. 释放该进程持有的文件锁（flock / fcntl lock）
-         │
-         ├── 3. 释放内核中的 struct file 对象
-         │
-         └── 4. inode 引用计数 -1
-                  │
-                  └── 如果 inode 引用计数也归零（文件已被unlink且无进程打开）
-                           └── 释放 inode，磁盘块被标记为空闲
+            │
+            ├── 1. 刷新页缓存（page cache）中的脏页写回磁盘
+            │        （如果有 O_SYNC 或调用了 fsync()，早已写回）
+            │
+            ├── 2. 释放该进程持有的文件锁（flock / fcntl lock）
+            │
+            ├── 3. 释放内核中的 struct file 对象
+            │
+            └── 4. inode 引用计数 -1
+                    │
+                    └── 如果 inode 引用计数也归零（文件已被unlink且无进程打开）
+                            └── 释放 inode，磁盘块被标记为空闲
 
     内核和TCP关闭连接时的行为：
     根据上述前置知识，只有文件描述符的引用计数为0时，内核才会进行真正【关闭】操作，释放资源等。对应在TCP关闭连接时的行为：
     如果是主动关闭连接的一方，发送第1个FIN包；
     如果是被动接受关闭连接的那一方，才会从当前的CLOSE-WAIT状态进入到下一阶段
     close() → 引用计数归零
-         │
-         ├── 1. 根据 SO_LINGER 选项决定行为
-         │        ├── 默认（不设置）：后台异步完成关闭，close() 立即返回
-         │        └── 设置了 SO_LINGER：阻塞等待数据发送完毕
-         │
-         ├── 2. 发送缓冲区中还未发出的数据 → 继续发完
-         │
-         ├── 3. 发送 FIN 包给对端（TCP 四次挥手开始）
-         │        对端收到后，会回 ACK，然后对端也发 FIN
-         │
-         ├── 4. 等待 TIME_WAIT 状态结束（主动关闭方）
-         │        默认 2*MSL（约 60~120 秒），防止最后一个 ACK 丢失
-         │
-         ├── 5. 释放发送/接收缓冲区内存
-         │
-         └── 6. 释放 struct socket、struct sock 等内核对象
+            │
+            ├── 1. 根据 SO_LINGER 选项决定行为
+            │        ├── 默认（不设置）：后台异步完成关闭，close() 立即返回
+            │        └── 设置了 SO_LINGER：阻塞等待数据发送完毕
+            │
+            ├── 2. 发送缓冲区中还未发出的数据 → 继续发完
+            │
+            ├── 3. 发送 FIN 包给对端（TCP 四次挥手开始）
+            │        对端收到后，会回 ACK，然后对端也发 FIN
+            │
+            ├── 4. 等待 TIME_WAIT 状态结束（主动关闭方）
+            │        默认 2*MSL（约 60~120 秒），防止最后一个 ACK 丢失
+            │
+            ├── 5. 释放发送/接收缓冲区内存
+            │
+            └── 6. 释放 struct socket、struct sock 等内核对象
 
     这里测试时偶然触发了个有意思的现象：看read_from_client注释
     服务器关闭里socket，由于引用计数降为0，所以它发送了FIN，客户端ACK了之后，客户端休眠了60秒，60秒之后再发送FIN，但是服务器此时是RST
