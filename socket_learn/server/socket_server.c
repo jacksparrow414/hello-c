@@ -17,6 +17,21 @@
 
 #define MESSAGE "I have received your message"
 
+#if defined(__linux__)
+#include <sys/epoll.h>
+#define USE_EPOLL 1
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+#include <sys/event.h>
+#define USE_KQUEUE 1
+#elif defined(_WIN64)
+#include <winsock2.h>
+#define USE_SELECT 1
+#else
+#error "Unsupported platform"
+#endif
+
+#define MAX_EVENTS 10
+
 struct client_info
 {
     int client_socket;
@@ -87,66 +102,208 @@ void *handle_request_for_threads_using_non_block_io(void *arg)
 }
 
 /*
+    Linux系统编程 63.4.1 创建epoll实例
+    这个文件描述符在其他几个epoll系统调用中用来表示epoll实例。当这个文件描述符不再需要时，应该通过close()来关闭
+    【当所有与epoll实例相关的文件描述符都被关闭时，实例被销毁，相关的资源都返还给系统】。（多个文件描述符可能引用到相同的epoll实例，这是由于调用了fork()或者dup()这样类似的函数所致。）
+
+    这句话和server_that_can_process_requests_concurrently_using_child_process方法上有关文件描述符的注释形成呼应
+*/
+int server_that_can_process_requests_concurrently_using_io_multiplexing_by_event_poll()
+{
+    int epfd = epoll_create1(0);
+    if (epfd == -1)
+    {
+        perror("epoll_create");
+        exit(1);
+    }
+    int server_socket = bind_server_socket_to_port_and_listen();
+    set_nonblocking(server_socket);
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = server_socket;
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, server_socket, &ev) == -1)
+    {
+        perror("epoll_ctl");
+        exit(1);
+    }
+    struct epoll_event evlist[MAX_EVENTS];
+    while (1)
+    {
+        int nready = epoll_wait(epfd, evlist, MAX_EVENTS, -1);
+        if (nready == -1)
+        {
+            perror("epoll_wait");
+            exit(1);
+        }
+        printf("nready = %d\n", nready);
+        for (int i = 0; i < nready; i++)
+        {
+            int fd = evlist[i].data.fd;
+            if (fd == server_socket)
+            {
+                int new_client_socket = accept(server_socket, NULL, NULL);
+                if (new_client_socket < 0)
+                {
+                    perror("accept");
+                    exit(EXIT_FAILURE);
+                }
+                printf("new epoll client connected\n");
+                set_nonblocking(new_client_socket);
+                struct epoll_event client_ev;
+                client_ev.events = EPOLLIN;
+                client_ev.data.fd = new_client_socket;
+                if (epoll_ctl(epfd, EPOLL_CTL_ADD, new_client_socket, &client_ev) == -1)
+                {
+                    perror("epoll_ctl");
+                    exit(1);
+                }
+            }
+            else if (evlist[i].events & (EPOLLIN | EPOLLHUP | EPOLLERR | EPOLLRDHUP))
+            {
+                printf("fd %d is ready to read\n", fd);
+                int result = read_from_client(fd);
+                printf("result %d\n", result);
+                if (result <= 0)
+                {
+                    // epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+                    printf("fd %d is closed\n", fd);
+                    // 调用close后内核会自动把fd从epoll中删除，无需显示调用epoll_ctl
+                    close(fd);
+                }
+                else if (result == READ_AGAIN)
+                {
+                    print_time();
+                    printf("no connection now, please connect after 3 seconds\n");
+                    continue;
+                }
+            }
+        }
+    }
+    close(server_socket);
+    close(epfd);
+    return 0;
+}
+
+/*
     https://sourceware.org/glibc/manual/2.25/html_node/Waiting-for-I_002fO.html
     A better solution is to use the select function.
     This blocks the program until input or output is ready on a specified set of file descriptors, or until a timer expires, whichever comes first
+
+    Linux系统编程 60.4 并发型服务器的其他设计方案
+    在设计单进程服务器时，服务器进程必须做一些通常由内核来处理的调度任务。
+    在每个客户端一个服务器进程地解决方案中，我们可以依靠内核来确保每个服务器进程（从而也确保了客户端）能公平地访问到服务器主机的资源。
+    但当我们用单个服务器进程来处理多个客户端时，服务器进程必须自行确保一个或多个客户端不会霸占服务器，从而使其他的客户端处于饥饿状态
+
+    Linux系统编程 63.2.1 select()系统调用
+    FD_ZERO()将fdset所指向的集合初始化为空。
+    FD_SET()将文件描述符fd添加到由fdset所指向的集合中。
+    FD_CLR()将文件描述符fd从fdset所指向的集合中移除。
+    如果文件描述符fd是fdset所指向的集合中的成员，FD_ISSET()返回true
+    FD_SET是1个有16个元素的数组，元素数据类型为unsigned long,该类型在Linux系统+64位机器上 占8字节，64位，所以每个元素为64位，这样每1位都可以按照下列条件来判断文件描述符是否在这个位图中
+        fd_set = unsigned long fds_bits[16]
+          └── 16个元素 × 64位 = 1024位 总容量
+        第一步：fd / 64  →  确定在哪个数组元素（哪个槽）
+        第二步：fd % 64  →  确定在该元素的哪一位（槽内偏移）
+
+    select是如何知道一个文件描述符已就绪呢？
+    来自claude的回答
+        select() 的就绪判断发生在内核态，它直接检查每个 fd 对应的内核数据结构状态，而不是真的去调用 I/O 函数试探
+        每种类型的 fd，内核都维护着对应的数据结构，就绪判断就是直接读这些结构的字段,如tcp_poll,pipe_poll
+        socket 可读？  → 检查 接收缓冲区 sk_receive_queue 是否非空
+        socket 可写？  → 检查 发送缓冲区 剩余空间是否足够
+        监听socket？   → 检查 accept队列 是否非空
+        管道可读？     → 检查 管道缓冲区 是否有数据，或写端是否已关闭
+
+        O_NONBLOCK 的意义：保护 select() 返回之后的那段时间
+        select() 判断就绪是一个时间点的快照，但从 select() 返回到你真正调用 read()/accept() 之间，有一段时间差，状态可能在这段时间内发生变化。
+            场景一：多进程/线程竞争同一个 fd
+            进程A                进程B                 内核
+            |                    |                    |
+            | select()返回可读   | select()返回可读   |（同一个socket）
+            |                    |                    |
+            | [准备调用read()]   |                    |
+            |                    | read() ──────────→ | 数据被B读走了
+            |                    | ← 返回数据         |
+            |                    |                    |
+            | read() ──────────→ |                    | 缓冲区已空
+            |                    |                    |
+            没有O_NONBLOCK → 永久阻塞 ❌
+            有O_NONBLOCK   → 返回EAGAIN，继续处理其他事情 ✅
+
+            这个回答也提到这种场景 https://stackoverflow.com/questions/12625224/how-is-select-alerted-to-an-fd-becoming-ready#comment17025226_12626119
 */
 int server_that_can_process_requests_concurrently_using_io_multiplexing_by_select()
 {
     int server_socket = bind_server_socket_to_port_and_listen();
-    //
-    // A better solution is to use the select function. This blocks the program until input or output is ready on a specified set of file descriptors,
-    // or until a timer expires, whichever comes first
+    set_nonblocking(server_socket);
     fd_set active_fd_set, read_fd_set;
     FD_ZERO(&active_fd_set);
     FD_SET(server_socket, &active_fd_set);
-    struct sockaddr_in client_socket;
     int i;
-    socklen_t client_len;
+    int max_fd = 0;
+    if (server_socket >= max_fd)
+    {
+        max_fd = server_socket + 1;
+    }
     while (1)
     {
         read_fd_set = active_fd_set;
-        if (select(FD_SETSIZE, &read_fd_set, NULL, NULL, NULL) < 0)
+        /*
+            The timeout specifies the maximum time to wait.
+            If you pass a null pointer for this argument, it means to block indefinitely until one of the file descriptors is ready.
+
+            Linux系统编程 63.2.1 select()系统调用
+            返回一个正整数表示有1个或多个文件描述符已达到就绪态。返回值表示处于就绪态的文件描述符个数。
+            在这种情况下，每个返回的文件描述符集合都需要检查（通过 FD_ISSET()），以此找出发生的 I/O 事件是什么
+
+            参数nfds必须设为比3个文件描述符集合中所包含的最大文件描述符号还要大1。
+            该参数让select()变得更有效率，因为此时内核就不用去检查大于这个值的文件描述符号是否属于这些文件描述符集合
+
+            readfds是用来检测输入是否就绪的文件描述符集合
+            writefds是用来检测输出是否就绪的文件描述符集合
+            exceptfds是用来检测异常情况是否发生的文件描述符集合
+        */
+        int active_fd_num = select(max_fd, &read_fd_set, NULL, NULL, NULL);
+        if (active_fd_num < 0)
         {
             perror("select");
             exit(EXIT_FAILURE);
         }
-
-        for (i = 0; i < FD_SETSIZE; i++)
+        printf("select() returns %d\n", active_fd_num);
+        for (i = 0; i < max_fd; i++)
         {
             if (FD_ISSET(i, &read_fd_set))
             {
+                printf("fd %d is ready\n", i);
                 if (i == server_socket)
                 {
-                    /* connection request on original socket. */
-                    int new_client_socket;
-                    client_len = sizeof(client_socket);
-                    // 接受连接 https://sourceware.org/glibc/manual/latest/html_node/Accepting-Connections.html
-                    // accept 返回值是一个新的 socket 描述符
-                    /*
-                        Accepting a connection does not make socket part of the connection.
-                        Instead, it creates a new socket which becomes connected.
-                        The normal return value of accept is the file descriptor for the new socket
-                    */
-                    new_client_socket = accept(server_socket, (struct sockaddr *)&client_socket, &client_len);
+                    int new_client_socket = accept(server_socket, NULL, NULL);
                     if (new_client_socket < 0)
                     {
                         perror("accept");
                         exit(EXIT_FAILURE);
                     }
-                    fprintf(stderr,
-                            "Server: connect from host %s, port %hd.\n",
-                            inet_ntoa(client_socket.sin_addr),
-                            ntohs(client_socket.sin_port));
+                    printf("new client connected\n");
+                    set_nonblocking(new_client_socket);
                     FD_SET(new_client_socket, &active_fd_set);
+                    if (new_client_socket >= max_fd)
+                    {
+                        max_fd = new_client_socket + 1;
+                    }
                 }
                 else
                 {
-                    /* data arriving on an already-connected socket. */
-                    if (read_from_client(i) < 0)
+                    int result = read_from_client(i);
+                    if (result <= 0)
                     {
                         close(i);
                         FD_CLR(i, &active_fd_set);
+                    }
+                    else if (result == READ_AGAIN)
+                    {
+                        print_time();
+                        printf("no connection now, please connect after 3 seconds\n");
+                        continue;
                     }
                 }
             }
@@ -156,6 +313,13 @@ int server_that_can_process_requests_concurrently_using_io_multiplexing_by_selec
 
 /*
     测试: (sleep 15; echo "hello"; sleep 15) | nc 127.0.0.1 18080
+    这种服务器类型有致命的问题：
+        当1万个连接到来时，accept接受新连接后，还要并行创建1万个线程处理请求。而创建线程是很耗时的，而且创建线程需要时间。
+        此时如果第10001个连接到来时，第10000个线程还没有创建完成，那么第10001个线程就会等待，等待时间为前10000个线程创建完成所耗的时间。
+        线程池+提前创建好线程倒是可以解决这个问题
+
+    Linux系统编程 60.4 并发型服务器的其他设计方案
+    服务器程序在启动阶段（即在任何客户端请求到来之前）就立刻预先创建好一定数量的子进程（或线程），而不是针对每个客户端来创建一个新的子进程（或线程）
 */
 int server_that_can_process_requests_concurrently_using_thread_and_non_blocking_io()
 {
@@ -268,7 +432,7 @@ int server_that_can_process_requests_concurrently_using_thread()
     2. 还存在一个系统级别的限制，它规定了系统中所有进程能够打开的文件数量
     3. RLIMIT_NPROC限制规定了调用进程的真实用户ID下最多能够创建的进程数量。试图（fork()、vfork()和clone()）超出这个限制会得到EAGAIN错误
 
-    关于引用计数为0时的行为 > https://claude.ai/chat/0c74635f-6692-469c-bd81-1031edcc10a4
+    关于引用计数为0时的行为 > https://claude.ai/chat/0c74635f-6692-469c-bd81-1031edcc10a4 还有server_that_can_process_requests_concurrently_using_io_multiplexing_by_event_poll方法上的注释形成呼应
     用户调用 close(fd)
     │
     ├── 第一层（每次 close() 都会发生）
@@ -380,6 +544,12 @@ int server_that_can_only_process_requests_iteratively()
         struct sockaddr_in client_socket;
         socklen_t addr_len = sizeof(client_socket);
         printf("server is ready for accept connection......\n");
+        /*
+             https://sourceware.org/glibc/manual/latest/html_node/Accepting-Connections.html
+             Accepting a connection does not make socket part of the connection.
+             Instead, it creates a new socket which becomes connected.
+             The normal return value of accept is the file descriptor for the new socket
+        */
         int new_client_socket = accept(server_socket, (struct sockaddr *)&client_socket, &addr_len);
         if (new_client_socket < 0)
         {

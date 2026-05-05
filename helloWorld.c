@@ -21,11 +21,12 @@ int main()
     printf("4: read a binary file then copy\n");
     printf("5: create a simple binary tree\n");
     printf("6: start a one therad socket server\n");
-    printf("7: start a multi thread socket server\n");
+    printf("7: start a socket server using io multiplexing by select\n");
     printf("8: start a socket client\n");
     printf("9: start a socket server that can process requests concurrently using child process\n");
     printf("10: start a socket server that can process requests concurrently using thread\n");
     printf("11: start a socket server that can process requests concurrently using thread and non-blocking IO\n");
+    printf("12: start a socket server that can process requests concurrently using thread and non-blocking IO and epoll\n");
     scanf("%d", &mode);
     /* 当scanf读取数字时, 需要跟一个getchar(), 读取并丢弃输入缓冲区中的换行符
     这是因为在使用 scanf 读取整数时，输入缓冲区中的换行符可能会被留下，而后续使用 fgetc 读取字符时会受到影响。
@@ -69,6 +70,9 @@ int main()
         break;
     case 11:
         server_that_can_process_requests_concurrently_using_thread_and_non_blocking_io();
+        break;
+    case 12:
+        server_that_can_process_requests_concurrently_using_io_multiplexing_by_event_poll();
         break;
     default:
         printf("invalid mode %d\n", mode);

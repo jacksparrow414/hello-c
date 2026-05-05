@@ -1,0 +1,20 @@
+services:
+  hello-c:
+    image: alpine:latest
+    container_name: hello-c
+    ports:
+      - 18080:18080
+    command: >
+      sh -c "
+        apk add --no-cache build-base &&
+        echo 'build-base installed successfully' &&
+        gcc --version &&
+        make --version &&
+        tail -f /dev/null
+      "
+    working_dir: /app
+    volumes:
+      - type: bind
+        source: ./
+        target: /app
+        read_only: false
